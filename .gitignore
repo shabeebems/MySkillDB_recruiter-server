@@ -1,0 +1,18 @@
+# Node.js dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables
+.env
+
+# Firebase service account (never commit)
+firebase-service-account.json
+*-firebase-adminsdk-*.json
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
