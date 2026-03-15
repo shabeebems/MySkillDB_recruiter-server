@@ -33,8 +33,19 @@ export class CVProjectService {
 
   public async updateCVProject(
     id: string,
-    data: Partial<ICVProject>
+    data: Partial<ICVProject>,
+    targetUserId?: string
   ): Promise<ServiceResponse> {
+    if (targetUserId) {
+      const existing = await this.cvProjectRepository.findById(id);
+      if (!existing || (existing as any).userId?.toString() !== targetUserId) {
+        return {
+          success: false,
+          message: Messages.CV_PROJECT_NOT_FOUND,
+          data: null,
+        };
+      }
+    }
     const updatedProject = await this.cvProjectRepository.update(id, data);
     if (!updatedProject) {
       return {
@@ -50,7 +61,17 @@ export class CVProjectService {
     };
   }
 
-  public async deleteCVProject(id: string): Promise<ServiceResponse> {
+  public async deleteCVProject(id: string, targetUserId?: string): Promise<ServiceResponse> {
+    if (targetUserId) {
+      const existing = await this.cvProjectRepository.findById(id);
+      if (!existing || (existing as any).userId?.toString() !== targetUserId) {
+        return {
+          success: false,
+          message: Messages.CV_PROJECT_NOT_FOUND,
+          data: null,
+        };
+      }
+    }
     const deletedProject = await this.cvProjectRepository.delete(id);
     if (!deletedProject) {
       return {

@@ -44,11 +44,11 @@ router.post('/generate-video-cv', generateVideoCv);
 // POST /api/ai/generate-admin-script (org_admin / master_admin only)
 router.post('/generate-admin-script', authenticateToken(['org_admin', 'master_admin']), generateAdminScript);
 
-// POST /api/ai/rewrite-cv-section (student only) – rewrite a CV section for ATS alignment
-router.post('/rewrite-cv-section', authenticateToken(['student']), rewriteCvSection);
+// POST /api/ai/rewrite-cv-section – rewrite a CV section for ATS alignment (student or org_admin editing a student's CV)
+router.post('/rewrite-cv-section', authenticateToken(['student', 'org_admin']), rewriteCvSection);
 
-// POST /api/ai/suggest-skills-for-profile (student only) – suggest skills from job/assessment for CV
-router.post('/suggest-skills-for-profile', authenticateToken(['student']), suggestSkillsForProfile);
+// POST /api/ai/suggest-skills-for-profile – suggest skills from job/assessment for CV (student = self; org_admin pass userId in body for target student)
+router.post('/suggest-skills-for-profile', authenticateToken(['student', 'org_admin']), suggestSkillsForProfile);
 // POST /api/ai/generate-job-brief – generate and save job brief readable module (org_admin / master_admin)
 router.post('/generate-job-brief', authenticateToken(['org_admin', 'master_admin']), generateJobBrief);
 

@@ -33,8 +33,19 @@ export class CVCertificateService {
 
   public async updateCVCertificate(
     id: string,
-    data: Partial<ICVCertificate>
+    data: Partial<ICVCertificate>,
+    targetUserId?: string
   ): Promise<ServiceResponse> {
+    if (targetUserId) {
+      const existing = await this.cvCertificateRepository.findById(id);
+      if (!existing || (existing as any).userId?.toString() !== targetUserId) {
+        return {
+          success: false,
+          message: Messages.CV_CERTIFICATE_NOT_FOUND,
+          data: null,
+        };
+      }
+    }
     const updatedCertificate = await this.cvCertificateRepository.update(id, data);
     if (!updatedCertificate) {
       return {
@@ -50,7 +61,17 @@ export class CVCertificateService {
     };
   }
 
-  public async deleteCVCertificate(id: string): Promise<ServiceResponse> {
+  public async deleteCVCertificate(id: string, targetUserId?: string): Promise<ServiceResponse> {
+    if (targetUserId) {
+      const existing = await this.cvCertificateRepository.findById(id);
+      if (!existing || (existing as any).userId?.toString() !== targetUserId) {
+        return {
+          success: false,
+          message: Messages.CV_CERTIFICATE_NOT_FOUND,
+          data: null,
+        };
+      }
+    }
     const deletedCertificate = await this.cvCertificateRepository.delete(id);
     if (!deletedCertificate) {
       return {

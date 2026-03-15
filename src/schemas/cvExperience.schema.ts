@@ -3,7 +3,7 @@ import { z } from "zod";
 export const createCVExperienceSchema = z.object({
   jobTitle: z.string().min(1, "Job title is required").trim(),
   company: z.string().min(1, "Company is required").trim(),
-  location: z.string().min(1, "Location is required").trim(),
+  location: z.string().trim().optional(),
   startDate: z.string().min(1, "Start date is required").trim(),
   endDate: z.string().trim().optional(),
   isCurrent: z.boolean().default(false),

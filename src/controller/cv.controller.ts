@@ -15,16 +15,23 @@ export class CVController {
   private cvCertificateService = new CVCertificateService();
   private cvStylePreferenceService = new CvStylePreferenceService();
 
+  private getTargetUserId(req: any): string {
+    if (req.user?.role === "org_admin" && req.query.userId) {
+      return req.query.userId as string;
+    }
+    return req.user._id.toString();
+  }
+
   // Profile methods
   public getCVProfile = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
-      this.cvProfileService.getCVProfileByUserId(req.user._id.toString())
+      this.cvProfileService.getCVProfileByUserId(this.getTargetUserId(req))
     );
 
   public createOrUpdateCVProfile = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
       this.cvProfileService.createOrUpdateCVProfile(
-        req.user._id.toString(),
+        this.getTargetUserId(req),
         req.body
       )
     );
@@ -32,13 +39,13 @@ export class CVController {
   // Style preferences (font, color, size)
   public getStylePreferences = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
-      this.cvStylePreferenceService.getByUserId(req.user._id.toString())
+      this.cvStylePreferenceService.getByUserId(this.getTargetUserId(req))
     );
 
   public createOrUpdateStylePreferences = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
       this.cvStylePreferenceService.createOrUpdate(
-        req.user._id.toString(),
+        this.getTargetUserId(req),
         req.body
       )
     );
@@ -46,97 +53,125 @@ export class CVController {
   // Education methods
   public getCVEducation = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
-      this.cvEducationService.getCVEducationByUserId(req.user._id.toString())
+      this.cvEducationService.getCVEducationByUserId(this.getTargetUserId(req))
     );
 
   public createCVEducation = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
       this.cvEducationService.createCVEducation(
-        req.user._id.toString(),
+        this.getTargetUserId(req),
         req.body
       )
     );
 
-  public updateCVEducation = (req: Request, res: Response): Promise<void> =>
+  public updateCVEducation = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
-      this.cvEducationService.updateCVEducation(req.params.id, req.body)
+      this.cvEducationService.updateCVEducation(
+        req.params.id,
+        req.body,
+        this.getTargetUserId(req)
+      )
     );
 
-  public deleteCVEducation = (req: Request, res: Response): Promise<void> =>
+  public deleteCVEducation = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
-      this.cvEducationService.deleteCVEducation(req.params.id)
+      this.cvEducationService.deleteCVEducation(
+        req.params.id,
+        this.getTargetUserId(req)
+      )
     );
 
   // Experience methods
   public getCVExperience = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
-      this.cvExperienceService.getCVExperienceByUserId(req.user._id.toString())
+      this.cvExperienceService.getCVExperienceByUserId(this.getTargetUserId(req))
     );
 
   public createCVExperience = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
       this.cvExperienceService.createCVExperience(
-        req.user._id.toString(),
+        this.getTargetUserId(req),
         req.body
       )
     );
 
-  public updateCVExperience = (req: Request, res: Response): Promise<void> =>
+  public updateCVExperience = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
-      this.cvExperienceService.updateCVExperience(req.params.id, req.body)
+      this.cvExperienceService.updateCVExperience(
+        req.params.id,
+        req.body,
+        this.getTargetUserId(req)
+      )
     );
 
-  public deleteCVExperience = (req: Request, res: Response): Promise<void> =>
+  public deleteCVExperience = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
-      this.cvExperienceService.deleteCVExperience(req.params.id)
+      this.cvExperienceService.deleteCVExperience(
+        req.params.id,
+        this.getTargetUserId(req)
+      )
     );
 
   // Project methods
   public getCVProject = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
-      this.cvProjectService.getCVProjectByUserId(req.user._id.toString())
+      this.cvProjectService.getCVProjectByUserId(this.getTargetUserId(req))
     );
 
   public createCVProject = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
       this.cvProjectService.createCVProject(
-        req.user._id.toString(),
+        this.getTargetUserId(req),
         req.body
       )
     );
 
-  public updateCVProject = (req: Request, res: Response): Promise<void> =>
+  public updateCVProject = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
-      this.cvProjectService.updateCVProject(req.params.id, req.body)
+      this.cvProjectService.updateCVProject(
+        req.params.id,
+        req.body,
+        this.getTargetUserId(req)
+      )
     );
 
-  public deleteCVProject = (req: Request, res: Response): Promise<void> =>
+  public deleteCVProject = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
-      this.cvProjectService.deleteCVProject(req.params.id)
+      this.cvProjectService.deleteCVProject(
+        req.params.id,
+        this.getTargetUserId(req)
+      )
     );
 
   // Certificate methods
   public getCVCertificate = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
-      this.cvCertificateService.getCVCertificateByUserId(req.user._id.toString())
+      this.cvCertificateService.getCVCertificateByUserId(this.getTargetUserId(req))
     );
 
   public createCVCertificate = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
       this.cvCertificateService.createCVCertificate(
-        req.user._id.toString(),
+        this.getTargetUserId(req),
         req.body
       )
     );
 
-  public updateCVCertificate = (req: Request, res: Response): Promise<void> =>
+  public updateCVCertificate = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
-      this.cvCertificateService.updateCVCertificate(req.params.id, req.body)
+      this.cvCertificateService.updateCVCertificate(
+        req.params.id,
+        req.body,
+        this.getTargetUserId(req)
+      )
     );
 
-  public deleteCVCertificate = (req: Request, res: Response): Promise<void> =>
+  public deleteCVCertificate = (req: any, res: Response): Promise<void> =>
     handleRequest(res, () =>
-      this.cvCertificateService.deleteCVCertificate(req.params.id)
+      this.cvCertificateService.deleteCVCertificate(
+        req.params.id,
+        this.getTargetUserId(req)
+      )
     );
 }
 
