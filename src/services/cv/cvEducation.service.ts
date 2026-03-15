@@ -33,8 +33,19 @@ export class CVEducationService {
 
   public async updateCVEducation(
     id: string,
-    data: Partial<ICVEducation>
+    data: Partial<ICVEducation>,
+    targetUserId?: string
   ): Promise<ServiceResponse> {
+    if (targetUserId) {
+      const existing = await this.cvEducationRepository.findById(id);
+      if (!existing || (existing as any).userId?.toString() !== targetUserId) {
+        return {
+          success: false,
+          message: Messages.CV_EDUCATION_NOT_FOUND,
+          data: null,
+        };
+      }
+    }
     const updatedEducation = await this.cvEducationRepository.update(id, data);
     if (!updatedEducation) {
       return {
@@ -50,7 +61,17 @@ export class CVEducationService {
     };
   }
 
-  public async deleteCVEducation(id: string): Promise<ServiceResponse> {
+  public async deleteCVEducation(id: string, targetUserId?: string): Promise<ServiceResponse> {
+    if (targetUserId) {
+      const existing = await this.cvEducationRepository.findById(id);
+      if (!existing || (existing as any).userId?.toString() !== targetUserId) {
+        return {
+          success: false,
+          message: Messages.CV_EDUCATION_NOT_FOUND,
+          data: null,
+        };
+      }
+    }
     const deletedEducation = await this.cvEducationRepository.delete(id);
     if (!deletedEducation) {
       return {

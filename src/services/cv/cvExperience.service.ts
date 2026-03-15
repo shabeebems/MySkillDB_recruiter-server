@@ -33,8 +33,19 @@ export class CVExperienceService {
 
   public async updateCVExperience(
     id: string,
-    data: Partial<ICVExperience>
+    data: Partial<ICVExperience>,
+    targetUserId?: string
   ): Promise<ServiceResponse> {
+    if (targetUserId) {
+      const existing = await this.cvExperienceRepository.findById(id);
+      if (!existing || (existing as any).userId?.toString() !== targetUserId) {
+        return {
+          success: false,
+          message: Messages.CV_EXPERIENCE_NOT_FOUND,
+          data: null,
+        };
+      }
+    }
     const updatedExperience = await this.cvExperienceRepository.update(id, data);
     if (!updatedExperience) {
       return {
@@ -50,7 +61,17 @@ export class CVExperienceService {
     };
   }
 
-  public async deleteCVExperience(id: string): Promise<ServiceResponse> {
+  public async deleteCVExperience(id: string, targetUserId?: string): Promise<ServiceResponse> {
+    if (targetUserId) {
+      const existing = await this.cvExperienceRepository.findById(id);
+      if (!existing || (existing as any).userId?.toString() !== targetUserId) {
+        return {
+          success: false,
+          message: Messages.CV_EXPERIENCE_NOT_FOUND,
+          data: null,
+        };
+      }
+    }
     const deletedExperience = await this.cvExperienceRepository.delete(id);
     if (!deletedExperience) {
       return {

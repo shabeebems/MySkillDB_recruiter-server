@@ -35,7 +35,7 @@ cvRouter.post(
 );
 cvRouter.put(
   "/profile",
-  validate(createOrUpdateCVProfileSchema),
+  validate(createOrUpdateCVProfileSchema.partial()),
   cvController.createOrUpdateCVProfile
 );
 

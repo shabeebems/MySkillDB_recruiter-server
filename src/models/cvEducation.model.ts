@@ -4,7 +4,7 @@ export interface ICVEducation extends Document {
   userId: Schema.Types.ObjectId;
   title: string;
   institution: string;
-  location: string;
+  location?: string;
   startYear: string;
   endYear: string;
   gpa?: string;
@@ -21,7 +21,7 @@ const CVEducationSchema: Schema<ICVEducation> = new Schema(
     },
     title: { type: String, required: true, trim: true },
     institution: { type: String, required: true, trim: true },
-    location: { type: String, required: true, trim: true },
+    location: { type: String, trim: true, default: "" },
     startYear: { type: String, required: true, trim: true },
     endYear: { type: String, required: true, trim: true },
     gpa: { type: String, trim: true },

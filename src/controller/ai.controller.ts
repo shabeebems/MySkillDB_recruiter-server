@@ -623,12 +623,17 @@ export const rewriteCvSection = async (req: Request, res: Response) => {
 };
 
 /**
- * Suggests skills for CV profile based on job and student's assessment. Student only.
+ * Suggests skills for CV profile based on job and student's assessment.
+ * Student: uses own userId. Org_admin: pass userId in body for the target student.
  */
 export const suggestSkillsForProfile = async (req: Request, res: Response) => {
-  const { jobId, currentProfileSkills } = req.body;
-  const userId = (req as any).user?._id?.toString();
-  const organizationId = (req as any).user?.organizationId?.toString?.();
+  const { jobId, currentProfileSkills, userId: bodyUserId } = req.body;
+  const reqUser = (req as any).user;
+  const userId =
+    reqUser?.role === "org_admin" && bodyUserId
+      ? bodyUserId
+      : reqUser?._id?.toString();
+  const organizationId = reqUser?.organizationId?.toString?.();
 
   if (!jobId) {
     return res.status(400).json({

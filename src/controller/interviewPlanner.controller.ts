@@ -11,11 +11,16 @@ export class InterviewPlannerController {
       () => this.interviewPlannerService.addJobToInterviewPlanner((req as any).user?._id, req.body.jobId)
     );
 
-  public getInterviewPlannerJobs = (req: Request, res: Response): Promise<void> =>
-    handleRequest(
+  public getInterviewPlannerJobs = (req: Request, res: Response): Promise<void> => {
+    const userId =
+      (req as any).user?.role === "org_admin" && req.query.userId
+        ? (req.query.userId as string)
+        : (req as any).user?._id?.toString();
+    return handleRequest(
       res,
-      () => this.interviewPlannerService.getInterviewPlannerJobs((req as any).user?._id)
+      () => this.interviewPlannerService.getInterviewPlannerJobs(userId)
     );
+  };
 
   public getInterviewPlannerCount = (req: Request, res: Response): Promise<void> =>
     handleRequest(

@@ -12,6 +12,7 @@ export const formatUsersOutput = (users: IUser[] | null) => {
     departmentId: user.departmentId,
     department: user.departmentId && typeof user.departmentId === 'object' && 'name' in user.departmentId
       ? (user.departmentId as any).name
-      : null
+      : null,
+    profilePicture: user.profilePicture,
   }));
 };

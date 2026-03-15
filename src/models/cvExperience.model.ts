@@ -22,7 +22,7 @@ const CVExperienceSchema: Schema<ICVExperience> = new Schema(
     },
     jobTitle: { type: String, required: true, trim: true },
     company: { type: String, required: true, trim: true },
-    location: { type: String, required: true, trim: true },
+    location: { type: String, trim: true },
     startDate: { type: String, required: true, trim: true },
     endDate: { type: String, trim: true },
     isCurrent: { type: Boolean, required: true, default: false },
