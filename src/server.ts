@@ -52,6 +52,7 @@ import jobOverviewVideoRoutes from "./routes/jobOverviewVideo.routes";
 import virtualSessionRoutes from "./routes/virtualSession.routes";
 // Notifications (in-app list + mark-as-read)
 import notificationRoutes from "./routes/notification.routes";
+import healthRoutes from "./routes/health.routes";
 // Notification processor cron job
 import { startNotificationProcessor } from "./jobs/notificationProcessor.job";
 import path from "path";
@@ -69,6 +70,9 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(requestLogger);
 
 connectDB();
+
+// Health check (no auth) - for load balancers, Docker HEALTHCHECK, etc.
+app.use("/health", healthRoutes);
 
 // NEW: Register the AI routes under a dedicated prefix
 app.use("/api/ai", aiRoutes); 
