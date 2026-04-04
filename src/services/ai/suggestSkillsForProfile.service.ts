@@ -1,6 +1,6 @@
 import { getGenerativeModel } from "./vertexAiClient";
 import { buildSuggestSkillsForProfilePrompt } from "../../prompts/suggestSkillsForProfile.prompt";
-import { JobService } from "../job.service";
+import { JobService, JobRequestUser } from "../job.service";
 import { SkillService } from "../skill.service";
 import { createChildLogger } from "../../utils/logger";
 
@@ -23,15 +23,19 @@ export async function suggestSkillsForProfile(
   jobId: string,
   _userId: string,
   _organizationId: string,
-  currentProfileSkills: string[] = []
+  currentProfileSkills: string[] = [],
+  viewer?: JobRequestUser
 ): Promise<SuggestSkillsResult> {
   try {
     const [jobRes, skillsRes] = await Promise.all([
-      jobService.getJobById(jobId),
+      jobService.getJobById(jobId, viewer),
       skillService.getSkillsByJob(jobId),
     ]);
 
     if (!jobRes.success || !jobRes.data) {
+      if ((jobRes as { statusCode?: number }).statusCode === 403) {
+        return { success: false, error: "Access denied" };
+      }
       return { success: false, error: "Job not found" };
     }
 

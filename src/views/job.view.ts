@@ -15,5 +15,8 @@ export const formatJobsOutput = (jobs: IJob[] | null) => {
     isActive: job.isActive !== undefined ? job.isActive : true, // Default to true if undefined
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
+    createdByStudentId: job.createdByStudentId
+      ? String(job.createdByStudentId)
+      : null,
   }));
 };

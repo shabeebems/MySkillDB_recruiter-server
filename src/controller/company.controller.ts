@@ -6,6 +6,12 @@ export class CompanyController {
   private companyService = new CompanyService();
 
   public getCompanies = (req: Request, res: Response): Promise<void> =>
-    handleRequest(res, () => this.companyService.getAllCompanies(req.query.search as string));
+    handleRequest(res, () => {
+      const user = (req as any).user;
+      return this.companyService.getAllCompanies(
+        req.query.search as string | undefined,
+        { role: user.role, _id: user._id }
+      );
+    });
 }
 

@@ -127,6 +127,8 @@ export enum Messages {
   JOB_UPDATED_SUCCESS = "Job updated successfully",
   JOB_FETCH_SUCCESS = "Jobs fetched successfully",
   JOB_NOT_FOUND = "Job not found",
+  JOB_ACCESS_DENIED = "You do not have access to this job",
+  ORGANIZATION_ACCESS_DENIED = "You do not have access to this organization.",
 
   // -------- Job Sprint --------
   JOB_SPRINT_CREATED_SUCCESS = "Job sprint created successfully",

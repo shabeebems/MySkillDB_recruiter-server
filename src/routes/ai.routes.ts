@@ -1,12 +1,18 @@
 import { Router } from 'express';
 import { authenticateToken } from '../middlewares/tokenValidation';
+import { parseJobRateLimiter } from '../middlewares/parseJobRateLimit';
 import { parseJobData, jobInterviewBuddyChat, generateEoMProfile, generateEoMTiers, generateEoMAnswerSuggestions, generateFlipCard, generateBatchFlipCards, generateLinkedInPost, generateVideoCv, generateAdminScript, rewriteCvSection, suggestSkillsForProfile, generateJobBrief } from '../controller/ai.controller';
 
 const router = Router();
 
 // POST /api/ai/parse-job
 // Handles the request for extracting structured data using Vertex AI.
-router.post('/parse-job', parseJobData);
+router.post(
+  '/parse-job',
+  authenticateToken(['master_admin', 'org_admin', 'student', 'hod']),
+  parseJobRateLimiter,
+  parseJobData
+);
 
 // POST /api/ai/job-interview-buddy-chat
 // Handles AI-powered Job Interview Buddy chat conversations

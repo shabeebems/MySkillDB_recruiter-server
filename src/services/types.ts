@@ -6,4 +6,5 @@ export type ServiceResponse = {
   success: boolean;
   message: string;
   data?: object | null;
+  statusCode?: number;
 };
