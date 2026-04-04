@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import path from 'path';
 import { ensureNoUniqueIndexOnFlipCards } from '../models/flipCard.model';
+import { ensureCompanyIndexes } from '../models/company.model';
 import { createChildLogger } from '../utils/logger';
 
 const log = createChildLogger('DatabaseConfig');
@@ -19,6 +20,7 @@ const connectDB = async () => {
     // Ensure flipcards collection doesn't have unique index on skillId + jobId
     // This allows multiple flip cards per skill/job combination
     await ensureNoUniqueIndexOnFlipCards();
+    await ensureCompanyIndexes();
   } catch (error) {
     log.error({ err: error }, 'MongoDB connection error');
     log.warn('Server will continue without database - some features may not work');

@@ -1,4 +1,5 @@
 import { JobRepository } from "../repositories/job.repository";
+import type { JobListVisibilityContext } from "../repositories/job.repository";
 import { JobOverviewVideoRepository } from "../repositories/jobOverviewVideo.repository";
 import { CompanyService } from "./company.service";
 import { Messages } from "../constants/messages";
@@ -7,9 +8,172 @@ import { IJob } from "../models/job.model";
 import { formatJobsOutput } from "../views/job.view";
 import { NotificationBatchingService } from "./notificationBatching.service";
 import { createChildLogger } from "../utils/logger";
+import { Types } from "mongoose";
 
 const log = createChildLogger("JobService");
 
+/** Authenticated user from token middleware */
+export type JobRequestUser = {
+  _id: Types.ObjectId | string;
+  role: string;
+  organizationId?: Types.ObjectId | string | null;
+  departmentId?: Types.ObjectId | string | null;
+};
+
+function toListVisibility(
+  user?: JobRequestUser
+): JobListVisibilityContext | undefined {
+  if (!user) return undefined;
+  if (user.role === "student") {
+    return { role: "student", userId: String(user._id) };
+  }
+  if (user.role === "hod") {
+    return {
+      role: "hod",
+      departmentId: user.departmentId ? String(user.departmentId) : undefined,
+    };
+  }
+  if (user.role === "org_admin" || user.role === "master_admin") {
+    return { role: user.role };
+  }
+  return undefined;
+}
+
+/** Admins must not load or mutate student-created (private) jobs */
+function assertAdminCannotSeeStudentPrivateJob(
+  job: IJob,
+  user?: JobRequestUser
+): ServiceResponse | null {
+  if (!job.createdByStudentId || !user) return null;
+  if (
+    user.role === "org_admin" ||
+    user.role === "master_admin" ||
+    user.role === "hod"
+  ) {
+    return {
+      success: false,
+      message: Messages.JOB_NOT_FOUND,
+      data: null,
+      statusCode: 404,
+    };
+  }
+  return null;
+}
+
+function assertStudentOwnsPrivateJob(job: IJob, user?: JobRequestUser): ServiceResponse | null {
+  if (!user || user.role !== "student") return null;
+  const owner = job.createdByStudentId
+    ? String(job.createdByStudentId)
+    : null;
+  if (!owner || owner !== String(user._id)) {
+    return {
+      success: false,
+      message: Messages.JOB_ACCESS_DENIED,
+      data: null,
+      statusCode: 403,
+    };
+  }
+  return null;
+}
+
+function assertStudentCannotEditOrgJob(job: IJob, user?: JobRequestUser): ServiceResponse | null {
+  if (!user || user.role !== "student") return null;
+  if (!job.createdByStudentId) {
+    return {
+      success: false,
+      message: Messages.JOB_ACCESS_DENIED,
+      data: null,
+      statusCode: 403,
+    };
+  }
+  return assertStudentOwnsPrivateJob(job, user);
+}
+
+function isMasterAdmin(user?: JobRequestUser): boolean {
+  return user?.role === "master_admin";
+}
+
+/** Tenant scoping: non–master_admin callers must match the given organization id. */
+function assertUserCanAccessOrganization(
+  user: JobRequestUser | undefined,
+  organizationId: string
+): ServiceResponse | null {
+  if (!user) {
+    return {
+      success: false,
+      message: Messages.ORGANIZATION_ACCESS_DENIED,
+      data: null,
+      statusCode: 403,
+    };
+  }
+  if (isMasterAdmin(user)) return null;
+  if (!user.organizationId) {
+    return {
+      success: false,
+      message: Messages.ORGANIZATION_ACCESS_DENIED,
+      data: null,
+      statusCode: 403,
+    };
+  }
+  if (String(user.organizationId) !== String(organizationId)) {
+    return {
+      success: false,
+      message: Messages.ORGANIZATION_ACCESS_DENIED,
+      data: null,
+      statusCode: 403,
+    };
+  }
+  return null;
+}
+
+/** Job must belong to the caller's organization (master_admin bypass). */
+function assertJobInCallerOrganization(
+  job: IJob,
+  user?: JobRequestUser
+): ServiceResponse | null {
+  if (!user) {
+    return {
+      success: false,
+      message: Messages.JOB_ACCESS_DENIED,
+      data: null,
+      statusCode: 403,
+    };
+  }
+  if (isMasterAdmin(user)) return null;
+  if (!user.organizationId) {
+    return {
+      success: false,
+      message: Messages.JOB_ACCESS_DENIED,
+      data: null,
+      statusCode: 403,
+    };
+  }
+  if (String(job.organizationId) !== String(user.organizationId)) {
+    return {
+      success: false,
+      message: Messages.JOB_ACCESS_DENIED,
+      data: null,
+      statusCode: 403,
+    };
+  }
+  return null;
+}
+
+/** HOD may only access jobs that include their department (master_admin bypass via caller). */
+function assertHodJobDepartmentScope(job: IJob, user?: JobRequestUser): ServiceResponse | null {
+  if (!user || user.role !== "hod" || !user.departmentId) return null;
+  const hid = String(user.departmentId);
+  const ok = job.departmentIds?.some((d) => String(d) === hid);
+  if (!ok) {
+    return {
+      success: false,
+      message: Messages.JOB_ACCESS_DENIED,
+      data: null,
+      statusCode: 403,
+    };
+  }
+  return null;
+}
 
 export class JobService {
   private jobRepository = new JobRepository();
@@ -17,15 +181,40 @@ export class JobService {
   private companyService = new CompanyService();
   private notificationBatchingService = new NotificationBatchingService();
 
-  public async createJob(data: any): Promise<ServiceResponse> {
-    // Ensure departmentIds is populated if only legacy field provided (though unlikely now)
+  public async createJob(
+    data: any,
+    user?: JobRequestUser
+  ): Promise<ServiceResponse> {
+    delete data.createdByStudentId;
+
     if (data.departmentId && (!data.departmentIds || data.departmentIds.length === 0)) {
       data.departmentIds = [data.departmentId];
     }
-    // Clean up legacy field
     delete data.departmentId;
 
-    // Handle Company logic
+    if (user?.role === "student") {
+      data.createdByStudentId = new Types.ObjectId(String(user._id));
+      if (user.organizationId) {
+        data.organizationId = String(user.organizationId);
+      }
+      if (user.departmentId) {
+        data.departmentIds = [String(user.departmentId)];
+      }
+    } else if (user && !isMasterAdmin(user)) {
+      if (!user.organizationId) {
+        return {
+          success: false,
+          message: Messages.ORGANIZATION_ACCESS_DENIED,
+          data: null,
+          statusCode: 403,
+        };
+      }
+      data.organizationId = String(user.organizationId);
+      if (user.role === "hod" && user.departmentId) {
+        data.departmentIds = [String(user.departmentId)];
+      }
+    }
+
     if (data.companyName) {
       const company = await this.companyService.findOrCreateCompany(
         data.companyName
@@ -34,12 +223,15 @@ export class JobService {
     }
 
     const newJob = await this.jobRepository.create(data);
-    // Populate company for immediate return if needed, though usually create returns raw
-    const populatedJob = await this.jobRepository.findById(String(newJob._id)); 
-    
-    // Queue FCM notifications for students in the job's departments (non-blocking).
-    // Only students receive "New Job Posted"; admins do not see it in their notification feed.
-    if (data.departmentIds && data.departmentIds.length > 0 && data.organizationId) {
+    const populatedJob = await this.jobRepository.findById(String(newJob._id));
+
+    const isPrivateStudentJob = !!data.createdByStudentId;
+    if (
+      !isPrivateStudentJob &&
+      data.departmentIds &&
+      data.departmentIds.length > 0 &&
+      data.organizationId
+    ) {
       this.notificationBatchingService
         .queueJobNotification(
           String(newJob._id),
@@ -50,7 +242,6 @@ export class JobService {
         )
         .catch((error) => {
           log.error({ err: error }, "Error queueing job notifications:");
-          // Don't fail job creation if notification queuing fails
         });
     }
 
@@ -69,19 +260,24 @@ export class JobService {
     page?: number,
     limit?: number,
     statusFilter?: string,
-    sortBy?: string
+    sortBy?: string,
+    user?: JobRequestUser
   ): Promise<ServiceResponse> {
+    const orgDenied = assertUserCanAccessOrganization(user, organizationId);
+    if (orgDenied) return orgDenied;
+
     const result = await this.jobRepository.findByOrganizationWithFilters(
       organizationId,
-        departmentId,
+      departmentId,
       companyId,
       companyName,
       page,
       limit,
       statusFilter,
-      sortBy
-      );
-    
+      sortBy,
+      toListVisibility(user)
+    );
+
     return {
       success: true,
       message: Messages.JOB_FETCH_SUCCESS,
@@ -91,13 +287,16 @@ export class JobService {
           total: result.total,
           page: result.page,
           limit: result.limit,
-          totalPages: result.totalPages
-        }
+          totalPages: result.totalPages,
+        },
       },
     };
   }
 
-  public async getJobById(jobId: string): Promise<ServiceResponse> {
+  public async getJobById(
+    jobId: string,
+    user?: JobRequestUser
+  ): Promise<ServiceResponse> {
     const job = await this.jobRepository.findById(jobId);
     if (!job) {
       return {
@@ -106,7 +305,27 @@ export class JobService {
         data: null,
       };
     }
-    
+
+    const orgJob = assertJobInCallerOrganization(job, user);
+    if (orgJob) return orgJob;
+
+    const hodDept = assertHodJobDepartmentScope(job, user);
+    if (hodDept) return hodDept;
+
+    if (user?.role === "student" && job.createdByStudentId) {
+      if (String(job.createdByStudentId) !== String(user._id)) {
+        return {
+          success: false,
+          message: Messages.JOB_ACCESS_DENIED,
+          data: null,
+          statusCode: 403,
+        };
+      }
+    }
+
+    const adminHidden = assertAdminCannotSeeStudentPrivateJob(job, user);
+    if (adminHidden) return adminHidden;
+
     return {
       success: true,
       message: Messages.JOB_FETCH_SUCCESS,
@@ -116,11 +335,16 @@ export class JobService {
 
   public async getJobsByDepartment(
     organizationId: string,
-    departmentId: string
+    departmentId: string,
+    user?: JobRequestUser
   ): Promise<ServiceResponse> {
+    const orgDenied = assertUserCanAccessOrganization(user, organizationId);
+    if (orgDenied) return orgDenied;
+
     const jobs = await this.jobRepository.findByDepartmentAndOrganization(
       departmentId,
-      organizationId
+      organizationId,
+      toListVisibility(user)
     );
     return {
       success: true,
@@ -131,11 +355,16 @@ export class JobService {
 
   public async getLatestJobsByOrganization(
     organizationId: string,
-    limit: number = 5
+    limit: number = 5,
+    user?: JobRequestUser
   ): Promise<ServiceResponse> {
+    const orgDenied = assertUserCanAccessOrganization(user, organizationId);
+    if (orgDenied) return orgDenied;
+
     const jobs = await this.jobRepository.findLatestJobsByOrganization(
       organizationId,
-      limit
+      limit,
+      toListVisibility(user)
     );
     return {
       success: true,
@@ -146,19 +375,27 @@ export class JobService {
 
   public async getJobCountByOrganization(
     organizationId: string,
-    departmentId?: string
+    departmentId?: string,
+    user?: JobRequestUser
   ): Promise<ServiceResponse> {
-    let count;
-    
+    const orgDenied = assertUserCanAccessOrganization(user, organizationId);
+    if (orgDenied) return orgDenied;
+
+    let count: number;
+
     if (departmentId) {
       count = await this.jobRepository.countByDepartmentAndOrganization(
         departmentId,
-        organizationId
+        organizationId,
+        toListVisibility(user)
       );
     } else {
-      count = await this.jobRepository.countByOrganization(organizationId);
+      count = await this.jobRepository.countByOrganization(
+        organizationId,
+        toListVisibility(user)
+      );
     }
-    
+
     return {
       success: true,
       message: Messages.JOB_FETCH_SUCCESS,
@@ -169,12 +406,17 @@ export class JobService {
   public async getLatestJobsByDepartmentAndOrganization(
     organizationId: string,
     departmentId: string,
-    limit: number = 3
+    limit: number = 3,
+    user?: JobRequestUser
   ): Promise<ServiceResponse> {
+    const orgDenied = assertUserCanAccessOrganization(user, organizationId);
+    if (orgDenied) return orgDenied;
+
     const jobs = await this.jobRepository.findLatestJobsByDepartmentAndOrganization(
       departmentId,
       organizationId,
-      limit
+      limit,
+      toListVisibility(user)
     );
     return {
       success: true,
@@ -186,26 +428,32 @@ export class JobService {
   public async getJobsByCompany(
     organizationId: string,
     companyId: string,
-    departmentId?: string
+    departmentId?: string,
+    user?: JobRequestUser
   ): Promise<ServiceResponse> {
+    const orgDenied = assertUserCanAccessOrganization(user, organizationId);
+    if (orgDenied) return orgDenied;
+
+    const vis = toListVisibility(user);
     let jobs;
-    
+
     if (departmentId) {
-      // Filter by both company and department
       const allCompanyJobs = await this.jobRepository.findByCompanyAndOrganization(
         companyId,
-        organizationId
+        organizationId,
+        vis
       );
-      jobs = allCompanyJobs.filter(job => 
-        job.departmentIds.some(deptId => String(deptId) === departmentId)
+      jobs = allCompanyJobs.filter((job) =>
+        job.departmentIds.some((deptId) => String(deptId) === departmentId)
       );
     } else {
       jobs = await this.jobRepository.findByCompanyAndOrganization(
         companyId,
-        organizationId
+        organizationId,
+        vis
       );
     }
-    
+
     return {
       success: true,
       message: Messages.JOB_FETCH_SUCCESS,
@@ -215,7 +463,8 @@ export class JobService {
 
   public async updateJobStatus(
     jobId: string,
-    isActive: boolean
+    isActive: boolean,
+    user?: JobRequestUser
   ): Promise<ServiceResponse> {
     const job = await this.jobRepository.findById(jobId);
     if (!job) {
@@ -226,6 +475,18 @@ export class JobService {
       };
     }
 
+    const denied = assertStudentCannotEditOrgJob(job, user);
+    if (denied) return denied;
+
+    const adminPriv = assertAdminCannotSeeStudentPrivateJob(job, user);
+    if (adminPriv) return adminPriv;
+
+    const orgJob = assertJobInCallerOrganization(job, user);
+    if (orgJob) return orgJob;
+
+    const hodDept = assertHodJobDepartmentScope(job, user);
+    if (hodDept) return hodDept;
+
     const updatedJob = await this.jobRepository.update(jobId, { isActive });
     if (!updatedJob) {
       return {
@@ -235,7 +496,6 @@ export class JobService {
       };
     }
 
-    // Populate companyId before returning
     const populatedJob = await this.jobRepository.findById(String(updatedJob._id));
 
     return {
@@ -245,8 +505,13 @@ export class JobService {
     };
   }
 
-  public async updateJob(jobId: string, data: any): Promise<ServiceResponse> {
-    // Check if job exists
+  public async updateJob(
+    jobId: string,
+    data: any,
+    user?: JobRequestUser
+  ): Promise<ServiceResponse> {
+    delete data.createdByStudentId;
+
     const existingJob = await this.jobRepository.findById(jobId);
     if (!existingJob) {
       return {
@@ -256,14 +521,38 @@ export class JobService {
       };
     }
 
-    // Ensure departmentIds is populated if only legacy field provided
+    const denied = assertStudentCannotEditOrgJob(existingJob, user);
+    if (denied) return denied;
+
+    const adminPriv = assertAdminCannotSeeStudentPrivateJob(existingJob, user);
+    if (adminPriv) return adminPriv;
+
+    const orgJob = assertJobInCallerOrganization(existingJob, user);
+    if (orgJob) return orgJob;
+
+    const hodDept = assertHodJobDepartmentScope(existingJob, user);
+    if (hodDept) return hodDept;
+
+    if (!isMasterAdmin(user)) {
+      delete data.organizationId;
+    }
+
     if (data.departmentId && (!data.departmentIds || data.departmentIds.length === 0)) {
       data.departmentIds = [data.departmentId];
     }
-    // Clean up legacy field
     delete data.departmentId;
 
-    // Handle Company logic - find or create company if companyName is provided
+    if (user?.role === "student") {
+      if (user.organizationId) {
+        data.organizationId = String(user.organizationId);
+      }
+      if (user.departmentId) {
+        data.departmentIds = [String(user.departmentId)];
+      }
+    } else if (user?.role === "hod" && user.departmentId) {
+      data.departmentIds = [String(user.departmentId)];
+    }
+
     if (data.companyName) {
       const company = await this.companyService.findOrCreateCompany(
         data.companyName
@@ -271,7 +560,6 @@ export class JobService {
       data.companyId = company._id;
     }
 
-    // Update the job
     const updatedJob = await this.jobRepository.update(jobId, data);
     if (!updatedJob) {
       return {
@@ -281,7 +569,6 @@ export class JobService {
       };
     }
 
-    // Populate companyId before returning
     const populatedJob = await this.jobRepository.findById(String(updatedJob._id));
 
     return {
@@ -291,7 +578,10 @@ export class JobService {
     };
   }
 
-  public async getJobsWithoutOverviewVideo(organizationId: string): Promise<ServiceResponse> {
+  public async getJobsWithoutOverviewVideo(
+    organizationId: string,
+    user?: JobRequestUser
+  ): Promise<ServiceResponse> {
     if (!organizationId) {
       return {
         success: false,
@@ -299,8 +589,14 @@ export class JobService {
         data: null,
       };
     }
+    const orgDenied = assertUserCanAccessOrganization(user, organizationId);
+    if (orgDenied) return orgDenied;
+
     const [allJobs, jobIdsWithOverview] = await Promise.all([
-      this.jobRepository.findByOrganizationId(organizationId),
+      this.jobRepository.findByOrganizationId(
+        organizationId,
+        toListVisibility(user)
+      ),
       this.jobOverviewVideoRepository.findJobIdsWithOverview(organizationId),
     ]);
     const withOverviewSet = new Set(

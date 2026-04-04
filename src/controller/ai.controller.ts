@@ -15,8 +15,20 @@ import { rewriteCvSection as rewriteCvSectionService, RewriteSectionType } from 
 import { JobBriefGenerationService } from "../services/ai/jobBriefGeneration.service";
 import { ReadingModuleService } from "../services/readingModule.service";
 import { createChildLogger } from "../utils/logger";
+import { JobRequestUser } from "../services/job.service";
 
 const log = createChildLogger("aicontroller");
+
+function jobRequestUserFromReq(req: Request): JobRequestUser | undefined {
+  const u = (req as any).user;
+  if (!u) return undefined;
+  return {
+    _id: u._id,
+    role: u.role,
+    organizationId: u.organizationId,
+    departmentId: u.departmentId,
+  };
+}
 
 
 /**
@@ -601,9 +613,20 @@ export const rewriteCvSection = async (req: Request, res: Response) => {
     });
   }
   try {
-    const result = await rewriteCvSectionService(jobId, section, content ?? "");
+    const result = await rewriteCvSectionService(
+      jobId,
+      section,
+      content ?? "",
+      jobRequestUserFromReq(req)
+    );
     if (!result.success) {
-      return res.status(result.error === "Job not found" ? 404 : 503).json({
+      const status =
+        result.error === "Job not found"
+          ? 404
+          : result.error === "Access denied"
+            ? 403
+            : 503;
+      return res.status(status).json({
         success: false,
         error: result.error,
       });
@@ -653,11 +676,18 @@ export const suggestSkillsForProfile = async (req: Request, res: Response) => {
       jobId,
       userId,
       organizationId ?? "",
-      Array.isArray(currentProfileSkills) ? currentProfileSkills : []
+      Array.isArray(currentProfileSkills) ? currentProfileSkills : [],
+      jobRequestUserFromReq(req)
     );
 
     if (!result.success) {
-      return res.status(result.error === "Job not found" ? 404 : 503).json({
+      const status =
+        result.error === "Job not found"
+          ? 404
+          : result.error === "Access denied"
+            ? 403
+            : 503;
+      return res.status(status).json({
         success: false,
         error: result.error,
       });

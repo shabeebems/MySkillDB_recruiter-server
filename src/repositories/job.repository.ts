@@ -1,6 +1,52 @@
 import JobModel, { IJob } from "../models/job.model";
 import { BaseRepository } from "./base.repository";
 import mongoose from "mongoose";
+import { escapeRegexLiteral, sanitizeSearchInput } from "../utils/regexEscape";
+
+/** Student: org jobs + own private jobs. Admin/HOD: org-posted only; HOD may be scoped to one department. */
+export type JobListVisibilityContext = {
+  role: "student" | "org_admin" | "master_admin" | "hod";
+  userId?: string;
+  /** HOD: restrict lists to jobs that include this department */
+  departmentId?: string;
+};
+
+function mergeJobListVisibility(
+  filter: Record<string, unknown>,
+  ctx?: JobListVisibilityContext
+): Record<string, unknown> {
+  if (!ctx) return filter;
+
+  if (ctx.role === "student" && ctx.userId) {
+    const uid = new mongoose.Types.ObjectId(ctx.userId);
+    const vis = {
+      $or: [
+        { createdByStudentId: null },
+        { createdByStudentId: uid },
+      ],
+    };
+    return { $and: [filter, vis] };
+  }
+
+  if (ctx.role === "hod") {
+    const parts: Record<string, unknown>[] = [
+      filter,
+      { createdByStudentId: null },
+    ];
+    if (ctx.departmentId) {
+      parts.push({
+        departmentIds: new mongoose.Types.ObjectId(ctx.departmentId),
+      });
+    }
+    return { $and: parts };
+  }
+
+  if (ctx.role === "org_admin" || ctx.role === "master_admin") {
+    return { $and: [filter, { createdByStudentId: null }] };
+  }
+
+  return filter;
+}
 
 export class JobRepository extends BaseRepository<IJob> {
   constructor() {
@@ -9,22 +55,28 @@ export class JobRepository extends BaseRepository<IJob> {
 
   async findByDepartmentAndOrganization(
     departmentId: string,
-    organizationId: string
+    organizationId: string,
+    visibility?: JobListVisibilityContext
   ): Promise<IJob[]> {
+    const base = {
+      organizationId,
+      departmentIds: departmentId,
+    };
+    const filter = mergeJobListVisibility(base, visibility);
     return this.model
-      .find({
-        organizationId,
-        departmentIds: departmentId
-      })
-      .populate('companyId')
+      .find(filter)
+      .populate("companyId")
       .exec();
   }
 
-  // Override base method to include population
-  async findByOrganizationId(organizationId: string): Promise<IJob[]> {
+  async findByOrganizationId(
+    organizationId: string,
+    visibility?: JobListVisibilityContext
+  ): Promise<IJob[]> {
+    const filter = mergeJobListVisibility({ organizationId }, visibility);
     return this.model
-      .find({ organizationId })
-      .populate('companyId')
+      .find(filter)
+      .populate("companyId")
       .exec();
   }
 
@@ -36,9 +88,16 @@ export class JobRepository extends BaseRepository<IJob> {
     page?: number,
     limit?: number,
     statusFilter?: string,
-    sortBy?: string
-  ): Promise<{ jobs: IJob[]; total: number; page: number; limit: number; totalPages: number }> {
-    const filter: any = { organizationId };
+    sortBy?: string,
+    visibility?: JobListVisibilityContext
+  ): Promise<{
+    jobs: IJob[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    const filter: Record<string, unknown> = { organizationId };
 
     if (departmentId) {
       filter.departmentIds = departmentId;
@@ -47,25 +106,28 @@ export class JobRepository extends BaseRepository<IJob> {
     if (companyId) {
       filter.companyId = new mongoose.Types.ObjectId(companyId);
     } else if (companyName) {
-      filter.$or = [
-        { companyName: { $regex: companyName, $options: "i" } },
-        { "companyId.name": { $regex: companyName, $options: "i" } }
-      ];
+      const safe = escapeRegexLiteral(sanitizeSearchInput(companyName));
+      if (safe) {
+        filter.$or = [
+          { companyName: { $regex: safe, $options: "i" } },
+          { "companyId.name": { $regex: safe, $options: "i" } },
+        ];
+      }
     }
 
-    // Filter by status
     if (statusFilter === "active") {
       filter.isActive = { $ne: false };
     } else if (statusFilter === "inactive") {
       filter.isActive = false;
     }
 
+    const mergedFilter = mergeJobListVisibility(filter, visibility);
+
     const pageNumber = page || 1;
     const pageSize = limit || 10;
     const skip = (pageNumber - 1) * pageSize;
 
-    // Determine sort order
-    let sortOrder: any = { createdAt: -1 }; // Default: newest first
+    let sortOrder: Record<string, 1 | -1> = { createdAt: -1 };
     if (sortBy === "oldest") {
       sortOrder = { createdAt: 1 };
     } else if (sortBy === "company") {
@@ -76,13 +138,13 @@ export class JobRepository extends BaseRepository<IJob> {
 
     const [jobs, total] = await Promise.all([
       this.model
-        .find(filter)
-        .populate('companyId')
+        .find(mergedFilter)
+        .populate("companyId")
         .sort(sortOrder)
         .skip(skip)
         .limit(pageSize)
         .exec(),
-      this.model.countDocuments(filter).exec()
+      this.model.countDocuments(mergedFilter).exec(),
     ]);
 
     return {
@@ -90,70 +152,78 @@ export class JobRepository extends BaseRepository<IJob> {
       total,
       page: pageNumber,
       limit: pageSize,
-      totalPages: Math.ceil(total / pageSize)
+      totalPages: Math.ceil(total / pageSize),
     };
   }
 
-  // Override findById to include population
   async findById(id: string): Promise<IJob | null> {
-    return this.model
-      .findById(id)
-      .populate('companyId')
-      .exec();
+    return this.model.findById(id).populate("companyId").exec();
   }
 
   async findLatestJobsByOrganization(
     organizationId: string,
-    limit: number = 5
+    limit: number = 5,
+    visibility?: JobListVisibilityContext
   ): Promise<IJob[]> {
+    const filter = mergeJobListVisibility({ organizationId }, visibility);
     return this.model
-      .find({ organizationId })
+      .find(filter)
       .sort({ createdAt: -1 })
       .limit(limit)
-      .populate('companyId')
+      .populate("companyId")
       .exec();
   }
 
-  async countByOrganization(organizationId: string): Promise<number> {
-    return this.model.countDocuments({ organizationId }).exec();
+  async countByOrganization(
+    organizationId: string,
+    visibility?: JobListVisibilityContext
+  ): Promise<number> {
+    const filter = mergeJobListVisibility({ organizationId }, visibility);
+    return this.model.countDocuments(filter).exec();
   }
 
   async countByDepartmentAndOrganization(
     departmentId: string,
-    organizationId: string
+    organizationId: string,
+    visibility?: JobListVisibilityContext
   ): Promise<number> {
-    return this.model.countDocuments({
+    const base = {
       organizationId,
-      departmentIds: departmentId
-    }).exec();
+      departmentIds: departmentId,
+    };
+    const filter = mergeJobListVisibility(base, visibility);
+    return this.model.countDocuments(filter).exec();
   }
 
   async findLatestJobsByDepartmentAndOrganization(
     departmentId: string,
     organizationId: string,
-    limit: number = 3
+    limit: number = 3,
+    visibility?: JobListVisibilityContext
   ): Promise<IJob[]> {
+    const base = {
+      organizationId,
+      departmentIds: departmentId,
+    };
+    const filter = mergeJobListVisibility(base, visibility);
     return this.model
-      .find({
-        organizationId,
-        departmentIds: departmentId
-      })
+      .find(filter)
       .sort({ createdAt: -1 })
       .limit(limit)
-      .populate('companyId')
+      .populate("companyId")
       .exec();
   }
 
   async findByCompanyAndOrganization(
     companyId: string,
-    organizationId: string
+    organizationId: string,
+    visibility?: JobListVisibilityContext
   ): Promise<IJob[]> {
-    return this.model
-      .find({
-        organizationId,
-        companyId: companyId
-      })
-      .populate('companyId')
-      .exec();
+    const base = {
+      organizationId,
+      companyId: companyId,
+    };
+    const filter = mergeJobListVisibility(base, visibility);
+    return this.model.find(filter).populate("companyId").exec();
   }
 }
