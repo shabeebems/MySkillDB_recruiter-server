@@ -11,7 +11,7 @@ export class InterviewPlannerRepository extends BaseRepository<IInterviewPlanner
       .find({ userId } as any)
       .populate({
         path: 'jobId',
-        select: 'name companyName place salaryRange',
+        select: 'name companyName place salaryRange createdByStudentId',
       })
       .exec();
   }
@@ -29,7 +29,7 @@ export class InterviewPlannerRepository extends BaseRepository<IInterviewPlanner
       .find({ userId } as any)
       .populate({
         path: 'jobId',
-        select: 'name companyName place salaryRange',
+        select: 'name companyName place salaryRange createdByStudentId',
       })
       .sort({ createdAt: -1 })
       .limit(limit)

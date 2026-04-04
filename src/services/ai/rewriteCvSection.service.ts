@@ -1,6 +1,6 @@
 import { getGenerativeModel } from "./vertexAiClient";
 import { buildRewriteCvSectionPrompt } from "../../prompts/rewriteCvSection.prompt";
-import { JobService } from "../job.service";
+import { JobService, JobRequestUser } from "../job.service";
 import { SkillService } from "../skill.service";
 import { createChildLogger } from "../../utils/logger";
 
@@ -30,7 +30,8 @@ function isVertexAiConfigured(): boolean {
 export async function rewriteCvSection(
   jobId: string,
   section: RewriteSectionType,
-  content: string
+  content: string,
+  viewer?: JobRequestUser
 ): Promise<{ success: boolean; data?: string; error?: string }> {
   try {
     if (!isVertexAiConfigured()) {
@@ -41,11 +42,14 @@ export async function rewriteCvSection(
       };
     }
     const [jobRes, skillsRes] = await Promise.all([
-      jobService.getJobById(jobId),
+      jobService.getJobById(jobId, viewer),
       skillService.getSkillsByJob(jobId),
     ]);
 
     if (!jobRes.success || !jobRes.data) {
+      if ((jobRes as { statusCode?: number }).statusCode === 403) {
+        return { success: false, error: "Access denied" };
+      }
       return { success: false, error: "Job not found" };
     }
 

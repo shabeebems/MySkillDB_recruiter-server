@@ -10,6 +10,8 @@ export interface IJob extends Document {
   salaryRange?: string;
   requirements?: string[];
   organizationId: Schema.Types.ObjectId;
+  /** Set when a student creates a private job; omit/null for org-posted jobs */
+  createdByStudentId?: Schema.Types.ObjectId | null;
   isActive?: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -40,12 +42,18 @@ const JobSchema: Schema<IJob> = new Schema(
       type: Boolean,
       default: true,
     },
+    createdByStudentId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
   },
   { timestamps: true }
 );
 
 // Add index for better query performance
 JobSchema.index({ organizationId: 1 });
+JobSchema.index({ organizationId: 1, createdByStudentId: 1 });
 JobSchema.index({ departmentIds: 1 });
 JobSchema.index({ companyId: 1 });
 
